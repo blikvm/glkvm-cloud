@@ -127,6 +127,7 @@ const (
 	devRegErrInvalidToken
 	devRegErrHookFailed
 	devRegErrIdConflicting
+	devRegErrEmptyMac
 )
 
 const (
@@ -144,6 +145,7 @@ var DevRegErrMsg = map[byte]string{
 	devRegErrInvalidToken:     "Invalid token",
 	devRegErrHookFailed:       "Hook failed",
 	devRegErrIdConflicting:    "ID conflict",
+	devRegErrEmptyMac:         "Empty MAC",
 }
 
 var DeviceMsgHandlers = map[byte]func(*Device, []byte) error{
@@ -449,6 +451,15 @@ func (dev *Device) Register(srv *RttyServer) byte {
 	if cfg.Token != "" && dev.token != cfg.Token {
 		log.Error().Msgf("invalid token for device '%s'", dev.id)
 		return devRegErrInvalidToken
+	}
+
+	// Reject an empty MAC (carried in the register description field). An empty
+	// value would collide with the devices.mac UNIQUE constraint as soon as a
+	// second device registers the same way, so refuse it here instead of
+	// letting the DB upsert fail repeatedly on every reconnect.
+	if strings.TrimSpace(dev.desc) == "" {
+		log.Error().Msgf("empty MAC for device '%s'", dev.id)
+		return devRegErrEmptyMac
 	}
 
 	devHookUrl := cfg.DevHookUrl

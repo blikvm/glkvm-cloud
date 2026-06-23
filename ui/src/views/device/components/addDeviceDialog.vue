@@ -149,7 +149,7 @@ device_mac=$(cat /proc/gl-hw-info/device_mac)
 while true; do
     if ! pgrep -f "rtty.*-d $device_mac" > /dev/null; then
         echo "rtty not running, starting..."
-        rtty -sx -T 2 -I "$device_id" -h $HOSTNAME$PORT -t $TOKEN -d "$device_mac" &
+        rtty -sx -T 2 -I "$device_id" -h $HOSTNAME$PORT -t "$TOKEN" -d "$device_mac" &
     fi
     sleep 5
 done
