@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -21,16 +22,48 @@ import (
 // noise. SSH/Web events are user-initiated and never suppressed.
 const startupGraceWindow = 60 * time.Second
 
+// onOffDebounceWindow coalesces rapid online/offline flapping in the audit
+// log: a second event of the same kind for the same device within this window
+// is dropped. Only the historical event log is affected; the live device
+// status (devices.status) is updated on a separate path and stays accurate.
+const onOffDebounceWindow = 30 * time.Second
+
 // Detail field length cap to keep rows bounded against malicious input.
 const maxDetailLen = 2000
 
 type Service struct {
 	repo        Repository
 	startupTime time.Time
+
+	// lastOnOff tracks the last time an online/offline event was accepted for
+	// a given device+type, keyed by deviceID+"|"+eventType, for flap damping.
+	onOffMu   sync.Mutex
+	lastOnOff map[string]int64
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, startupTime: time.Now()}
+	return &Service{
+		repo:        repo,
+		startupTime: time.Now(),
+		lastOnOff:   make(map[string]int64),
+	}
+}
+
+// allowOnOff reports whether an online/offline event for the device should be
+// recorded now, updating the last-seen timestamp when it returns true. It
+// drops a same-kind event that arrives within onOffDebounceWindow.
+func (s *Service) allowOnOff(deviceID string, evt EventType) bool {
+	key := deviceID + "|" + string(evt)
+	now := time.Now().Unix()
+	window := int64(onOffDebounceWindow / time.Second)
+
+	s.onOffMu.Lock()
+	defer s.onOffMu.Unlock()
+	if last, ok := s.lastOnOff[key]; ok && now-last < window {
+		return false
+	}
+	s.lastOnOff[key] = now
+	return true
 }
 
 // normalizeMac strips colons and lowercases, matching the format in the
@@ -54,6 +87,9 @@ func (s *Service) RecordDeviceOnline(ctx context.Context, deviceID, mac, ip stri
 	if s.inGracePeriod() {
 		return
 	}
+	if !s.allowOnOff(deviceID, EventDeviceOnline) {
+		return
+	}
 	if _, err := s.repo.Create(ctx, &Log{
 		DeviceID:  deviceID,
 		DeviceMac: normalizeMac(mac),
@@ -72,6 +108,9 @@ func (s *Service) RecordDeviceOffline(ctx context.Context, deviceID, mac, ip str
 		return
 	}
 	if s.inGracePeriod() {
+		return
+	}
+	if !s.allowOnOff(deviceID, EventDeviceOffline) {
 		return
 	}
 	if _, err := s.repo.Create(ctx, &Log{

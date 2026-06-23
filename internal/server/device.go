@@ -38,6 +38,7 @@ import (
 	"rttys/internal/store/sqlite"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"rttys/utils"
@@ -81,6 +82,11 @@ type Device struct {
 	close   sync.Once
 	ctx     context.Context
 	cancel  context.CancelFunc
+
+	// registered becomes true only after the device passes registration
+	// (token + MAC checks) and is added to the server. Close() consults it so
+	// that failed registrations never emit an unpaired device-offline event.
+	registered atomic.Bool
 }
 
 const (
@@ -379,7 +385,11 @@ func (dev *Device) Close(srv *RttyServer) {
 	dev.close.Do(func() {
 		log.Error().Msgf("device '%s' disconnected", dev.id)
 		srv.DelDevice(dev)
-		if dev.id != "" {
+		// Only emit an offline event for devices that actually came online.
+		// A connection that failed registration (bad token, empty MAC, proto
+		// too low, hook failure, id conflict) never recorded an online event,
+		// so recording offline here would produce orphan rows on every retry.
+		if dev.id != "" && dev.registered.Load() {
 			_ = legacy.MarkDeviceOffline(dev.id)
 			if c := sqlite.TryContainer(); c != nil && c.DeviceLogSvc != nil {
 				c.DeviceLogSvc.RecordDeviceOffline(context.Background(), dev.id, dev.desc, "")
@@ -447,7 +457,6 @@ func (dev *Device) Register(srv *RttyServer) byte {
 		return devRegErrHookFailed
 	}
 
-	log.Info().Msgf("cfg.Token:%s，dev.token:%s", cfg.Token, dev.token)
 	if cfg.Token != "" && dev.token != cfg.Token {
 		log.Error().Msgf("invalid token for device '%s'", dev.id)
 		return devRegErrInvalidToken
@@ -486,6 +495,9 @@ func (dev *Device) Register(srv *RttyServer) byte {
 	if !srv.AddDevice(dev) {
 		return devRegErrIdConflicting
 	}
+
+	// Mark as fully registered so Close() will emit a paired offline event.
+	dev.registered.Store(true)
 
 	if c := sqlite.TryContainer(); c != nil && c.DeviceLogSvc != nil {
 		c.DeviceLogSvc.RecordDeviceOnline(context.Background(), dev.id, dev.desc, "")
