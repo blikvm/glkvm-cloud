@@ -83,19 +83,12 @@ func RegisterAPIRoutes(r *gin.Engine, d Deps) {
         }
 
         chosen := hostname
-        // --------  Reverse proxy mode: force IP ----------
-        if cfg.ReverseProxyEnabled {
-            // Reverse proxy mode: always use configured WebRTC IP
-            if strings.TrimSpace(cfg.WebrtcIP) != "" {
-                chosen = strings.TrimSpace(cfg.WebrtcIP)
-            }
-        } else {
-            // -------- 3) Original behavior (unchanged) ----------
-            // 1) If hostname is domain, keep it
-            // 2) If hostname is IP and cfg.WebrtcIP is set, use cfg.WebrtcIP
-            if isIP(hostname) && cfg.WebrtcIP != "" {
-                chosen = cfg.WebrtcIP
-            }
+        // GLKVM_ACCESS_IP (cfg.WebrtcIP) takes priority whenever it is set,
+        // regardless of how the web UI was reached (IP or domain/localhost)
+        // and regardless of reverse-proxy mode. Only fall back to the current
+        // web host when it is left empty (auto-detect).
+        if v := strings.TrimSpace(cfg.WebrtcIP); v != "" {
+            chosen = v
         }
 
         // Determine selfhost WebUI URL
@@ -204,8 +197,4 @@ type scriptInfoResp struct {
     WebrtcUsername string `json:"webrtcUsername"`
     WebrtcPassword string `json:"webrtcPassword"`
     WebUIURL       string `json:"webUIURL"`
-}
-
-func isIP(addr string) bool {
-    return net.ParseIP(addr) != nil
 }
