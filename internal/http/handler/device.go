@@ -103,6 +103,14 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 		pageSize = v
 	}
 
+	// Status filter: only accept known values, ignore anything else.
+	status := strings.ToLower(strings.TrimSpace(c.Query("status")))
+	switch status {
+	case "online", "offline", "disabled":
+	default:
+		status = ""
+	}
+
 	// All filtering/sorting/pagination is pushed to SQL. The search ':' is
 	// stripped to match the colon-less MAC stored in the DB, mirroring the
 	// previous client-side search behavior.
@@ -110,6 +118,7 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 		RestrictGroups: restrictGroups,
 		Search:         strings.ToLower(strings.ReplaceAll(strings.TrimSpace(c.Query("q")), ":", "")),
 		Unassigned:     strings.EqualFold(strings.TrimSpace(c.Query("unassigned")), "true"),
+		Status:         status,
 		SortBy:         strings.TrimSpace(c.Query("sortBy")),
 		Order:          strings.TrimSpace(c.Query("order")),
 		Page:           page,

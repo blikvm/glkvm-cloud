@@ -126,6 +126,9 @@ func (r *DeviceRepo) ListPaged(ctx context.Context, q device.ListQuery) ([]devic
     if q.Unassigned {
         base = base.Where("d.device_group_id IS NULL")
     }
+    if q.Status != "" {
+        base = base.Where("d.status = ?", q.Status)
+    }
     if q.Search != "" {
         like := "%" + q.Search + "%"
         base = base.Where(

@@ -18,6 +18,7 @@ export const getDeviceListApi = (params?: {
     pageSize?: number
     q?: string
     unassigned?: boolean
+    status?: 'online' | 'offline'
 }) => {
     return request<{ items: DeviceInfo[], page: number, pageSize: number, total: number }>({
         url: '/api/devices',

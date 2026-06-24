@@ -17,12 +17,21 @@
                         @search="deviceStore.handleSearch"
                     />
     
-                    <ASelect 
+                    <ASelect
                         v-model:value="deviceStore.state.deviceGroupId"
                         allowClear
                         :placeholder="$t('device.allAssociatedDeviceGroup')"
                         style="width: 224px;">
                         <ASelectOption v-for="item in state.groupList" :key="item.groupId" :value="item.groupId">{{ item.name }}</ASelectOption>
+                    </ASelect>
+
+                    <ASelect
+                        v-model:value="deviceStore.state.status"
+                        allowClear
+                        :placeholder="$t('device.status')"
+                        style="width: 140px; margin-left: 8px;">
+                        <ASelectOption value="online">{{ $t('device.online') }}</ASelectOption>
+                        <ASelectOption value="offline">{{ $t('device.offline') }}</ASelectOption>
                     </ASelect>
                 </div>
 

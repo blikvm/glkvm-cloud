@@ -26,6 +26,7 @@ export interface DeviceQuery {
     searchText: string
     deviceGroupId: number
     onlyShowUnassigned: boolean
+    status?: 'online' | 'offline'
     sortBy?: string
     order?: 'asc' | 'desc'
 }

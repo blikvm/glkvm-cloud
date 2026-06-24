@@ -40,6 +40,7 @@ type ListQuery struct {
     // colon-less MAC stored in the DB).
     Search     string
     Unassigned bool   // only devices with no device group
+    Status     string // "" = any; otherwise online|offline|disabled
     SortBy     string // id|ip|mac|ddns|description|connectedTime|deviceGroupName
     Order      string // "asc" (default) or "desc"
     Page       int    // 1-based

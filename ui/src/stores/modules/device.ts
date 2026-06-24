@@ -34,6 +34,8 @@ export const useDeviceStore = defineStore('device', () => {
         deviceGroupId: undefined,
         /** 是否仅显示未分配项 */
         onlyShowUnassigned: false,
+        /** 在线状态筛选：undefined=全部 / 'online' / 'offline' */
+        status: undefined as 'online' | 'offline' | undefined,
         /** 这个字段存储是否有设备，因为UI上没有设备和没有筛选出来的设备是对应不同的展示画面的 */
         hasDevice: false,
         /** 排序字段 */
@@ -53,6 +55,7 @@ export const useDeviceStore = defineStore('device', () => {
             searchText: state.searchText?.replaceAll(':','').toLowerCase(),
             deviceGroupId: state.deviceGroupId,
             onlyShowUnassigned: state.onlyShowUnassigned,
+            status: state.status,
             sortBy: state.sortBy,
             order: state.order,
         }
@@ -70,6 +73,7 @@ export const useDeviceStore = defineStore('device', () => {
                 q: computedDeviceQuery.value.searchText || undefined,
                 groupId: computedDeviceQuery.value.deviceGroupId,
                 unassigned: computedDeviceQuery.value.onlyShowUnassigned || undefined,
+                status: computedDeviceQuery.value.status || undefined,
                 sortBy: computedDeviceQuery.value.sortBy,
                 order: computedDeviceQuery.value.order,
             })
