@@ -35,3 +35,8 @@ func MarkDeviceOffline(deviceID string) error {
     repo := sqlite.MustContainer().DeviceMeta
     return repo.MarkOffline(context.Background(), deviceID)
 }
+
+func MarkDeviceOnline(deviceID string) error {
+    repo := sqlite.MustContainer().DeviceMeta
+    return repo.MarkOnline(context.Background(), deviceID)
+}

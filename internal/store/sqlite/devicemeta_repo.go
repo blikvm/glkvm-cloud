@@ -38,13 +38,28 @@ func (r *DeviceMetaRepo) SaveOrUpdate(ctx context.Context, deviceID, mac, descri
     ).Error
 }
 
-func (r *DeviceMetaRepo) UpdateClient(ctx context.Context, deviceID, client string) error {
+// MarkOnline flips a known device back online and refreshes last_seen without
+// rewriting its (unchanged) identity columns. Used on reconnect to avoid the
+// write amplification of a full upsert during reconnect storms.
+func (r *DeviceMetaRepo) MarkOnline(ctx context.Context, deviceID string) error {
     if r.db == nil {
         return fmt.Errorf("gorm db is nil")
     }
     return r.db.WithContext(ctx).Exec(
-        `UPDATE devices SET client=? WHERE ddns=?`,
-        client, deviceID,
+        `UPDATE devices SET status='online', last_seen_at=unixepoch() WHERE ddns=?`,
+        deviceID,
+    ).Error
+}
+
+func (r *DeviceMetaRepo) UpdateClient(ctx context.Context, deviceID, client string) error {
+    if r.db == nil {
+        return fmt.Errorf("gorm db is nil")
+    }
+    // Only write when the value actually changed, so reconnects of a device
+    // whose client is unchanged don't generate a redundant write.
+    return r.db.WithContext(ctx).Exec(
+        `UPDATE devices SET client=? WHERE ddns=? AND (client IS NULL OR client <> ?)`,
+        client, deviceID, client,
     ).Error
 }
 

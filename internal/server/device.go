@@ -256,19 +256,29 @@ func handleDeviceConnection(srv *RttyServer, conn net.Conn) {
 	log.Info().Msgf("device '%s' registered, group '%s' proto %d, heartbeat %v, remoteIP '%s'",
 		dev.id, dev.group, dev.proto, dev.heartbeat, deviceRemoteIP)
 
-	// 2. Load existing metadata by device_id
-	description := ""
-	meta, err := legacy.GetDeviceMetaByDeviceID(dev.id)
-	if err == nil && meta != nil {
-		description = meta.Description
-	}
-	if err := legacy.SaveOrUpdateDeviceMeta(
-		dev.id,
-		dev.desc, // device register mac info with desc filed
-		description,
-		deviceRemoteIP,
-	); err != nil {
-		return
+	// 2. Persist device metadata. A known device reconnecting with unchanged
+	// identity (same MAC + IP) only needs to be flipped back online with a
+	// fresh last_seen — avoid rewriting every metadata column. This removes most
+	// of the per-reconnect write amplification that drives restart/reconnect
+	// storms. New devices, or ones whose MAC/IP changed, get the full upsert.
+	meta, _ := legacy.GetDeviceMetaByDeviceID(dev.id)
+	if meta != nil && meta.Mac == utils.NormalizeMac(dev.desc) && meta.IP == deviceRemoteIP {
+		if err := legacy.MarkDeviceOnline(dev.id); err != nil {
+			return
+		}
+	} else {
+		description := ""
+		if meta != nil {
+			description = meta.Description
+		}
+		if err := legacy.SaveOrUpdateDeviceMeta(
+			dev.id,
+			dev.desc, // device register mac info with desc filed
+			description,
+			deviceRemoteIP,
+		); err != nil {
+			return
+		}
 	}
 
 	for {
