@@ -71,10 +71,13 @@ func InitAppContainer(r *gin.Engine) (*AppContainer, error) {
 	cfg := xconfig.Must()
 	// --- DB ---
 	appDB, err := sqlite.Open(ctx, sqlite.Options{
-		DSN:          defaultDBPath,
-		MaxOpenConns: 1,
-		MaxIdleConns: 1,
-		LogSQL:       true,
+		DSN: defaultDBPath,
+		// WAL (set via DSN pragmas) lets reads run concurrently with the single
+		// writer, so a wider pool serves API reads without blocking on device
+		// registration writes.
+		MaxOpenConns: 8,
+		MaxIdleConns: 8,
+		LogSQL:       false,
 	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("open sqlite failed")

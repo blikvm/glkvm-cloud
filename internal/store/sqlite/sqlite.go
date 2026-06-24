@@ -34,6 +34,25 @@ type Options struct {
     LogSQL       bool
 }
 
+// withPragmas appends connection pragmas to the DSN so every pooled connection
+// opens in WAL mode (readers never block on the single writer), waits instead
+// of erroring on contention (busy_timeout), and uses the faster-but-safe
+// synchronous=NORMAL. Without this, a device reconnect storm serializes all DB
+// access on one connection and blocks user-facing API reads for seconds.
+func withPragmas(dsn string) string {
+    const pragmas = "_pragma=busy_timeout(5000)" +
+        "&_pragma=journal_mode(WAL)" +
+        "&_pragma=synchronous(NORMAL)" +
+        "&_pragma=foreign_keys(ON)"
+    if strings.HasPrefix(dsn, "file:") {
+        if strings.Contains(dsn, "?") {
+            return dsn + "&" + pragmas
+        }
+        return dsn + "?" + pragmas
+    }
+    return "file:" + dsn + "?" + pragmas
+}
+
 // Open opens sqlite via GORM (glebarez/sqlite) and exposes both *gorm.DB and *sql.DB.
 func Open(ctx context.Context, opt Options) (*AppDB, error) {
     if opt.DSN == "" {
@@ -51,7 +70,7 @@ func Open(ctx context.Context, opt Options) (*AppDB, error) {
         gormCfg.Logger = logger.Default.LogMode(logger.Info)
     }
 
-    gdb, err := gorm.Open(gormsqlite.Open(opt.DSN), gormCfg)
+    gdb, err := gorm.Open(gormsqlite.Open(withPragmas(opt.DSN)), gormCfg)
     if err != nil {
         return nil, err
     }
