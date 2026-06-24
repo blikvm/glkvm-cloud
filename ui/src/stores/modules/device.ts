@@ -18,7 +18,7 @@ const GET_DEVICE_POLLING_INTERVAL = 10 * 1000
 let getDeviceListTimer: number
 let pollingEnable = false
 
-const DEVICE_VIEW_PAGE_SIZE = 20
+const DEVICE_VIEW_PAGE_SIZE = 50
 
 export const useDeviceStore = defineStore('device', () => {
     const state = reactive({
@@ -58,42 +58,31 @@ export const useDeviceStore = defineStore('device', () => {
         }
         return query
     })
-    /** 设备列表的分页展示数据 */
-    const deviceList= computed<DeviceInfo[]>(() => { 
+    /** 设备列表展示数据（服务端已分页，直接展示当前页） */
+    const deviceList = computed<DeviceInfo[]>(() => state.deviceList)
+    /** 获取设备列表（服务端分页 + 搜索/筛选下推后端） */
+    const getDeviceList = async (isPolling = false, isGetAll = false) => {
         try {
-            const { page, size } = pageLink.value
-            return state.deviceList.slice((page - 1) * size, page * size)
-        } catch (error) {
-            return []
-        }    
-    })
-    /** 获取设备列表 */
-    const getDeviceList = async (isPolling = false, isGetAll = false) => {        
-        try {
-            console.log('getDeviceList', computedDeviceQuery.value)
             !isPolling && (state.getDeviceLoading = true)
             const res = await getDeviceListApi({
+                page: pageLink.value.page,
+                pageSize: pageLink.value.size,
+                q: computedDeviceQuery.value.searchText || undefined,
                 groupId: computedDeviceQuery.value.deviceGroupId,
+                unassigned: computedDeviceQuery.value.onlyShowUnassigned || undefined,
                 sortBy: computedDeviceQuery.value.sortBy,
                 order: computedDeviceQuery.value.order,
             })
-            console.log(res)
-            
+            const total = res.data.total ?? res.data.items.length
+            pageLink.value.setTotal(total)
+            // hasDevice 区分“账号一台设备都没有(引导页)”和“筛选无结果(空表格)”：
+            // 只有无筛选的首次加载(isGetAll)可置 false，之后只升不降。
             if (isGetAll) {
-                state.hasDevice = res.data.items.length > 0
-            }
-            if (res.data.items.length) {
+                state.hasDevice = total > 0
+            } else if (total > 0) {
                 state.hasDevice = true
             }
-            pageLink.value.setTotal(res.data.items.length)
-            state.deviceList = res.data.items.filter(d => {
-                return (d?.ddns?.toString().toLowerCase()?.indexOf(computedDeviceQuery.value.searchText) > -1 
-                || d?.mac?.toString().toLowerCase()?.indexOf(computedDeviceQuery.value.searchText) > -1 
-                || d?.ip?.toString().toLowerCase()?.indexOf(computedDeviceQuery.value.searchText) > -1 
-                || d?.description?.toLowerCase()?.indexOf(computedDeviceQuery.value.searchText) > -1) && 
-                (computedDeviceQuery.value.deviceGroupId ? d.deviceGroupId === computedDeviceQuery.value.deviceGroupId : true) &&
-                (!computedDeviceQuery.value.onlyShowUnassigned || (computedDeviceQuery.value.onlyShowUnassigned && !d.deviceGroupId))
-            }) || []
+            state.deviceList = res.data.items || []
             state.completeDeviceList = res.data.items || []
             !isPolling && (state.getDeviceLoading = false)
         } catch (error) {
@@ -123,9 +112,18 @@ export const useDeviceStore = defineStore('device', () => {
             pollingEnable && startPolling()
         }, GET_DEVICE_POLLING_INTERVAL)
     }
-    /** 监听设备列表的查询条件变化 */
-    watch(computedDeviceQuery, () => {
+    /** 翻页（服务端分页）：页码变化即拉取当前页 */
+    watch(() => pageLink.value.page, () => {
         getDeviceList()
+    })
+    /** 查询条件变化（搜索/组/未分配/排序）：重置到第 1 页。
+     * 若已在第 1 页则直接拉取，否则改页码由上面的页码 watch 触发，避免重复请求。 */
+    watch(computedDeviceQuery, () => {
+        if (pageLink.value.page !== 1) {
+            pageLink.value.changePage(1)
+        } else {
+            getDeviceList()
+        }
     })
 
     return {

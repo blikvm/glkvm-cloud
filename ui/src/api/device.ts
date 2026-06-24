@@ -9,9 +9,17 @@
 import { ExecuteCommandParams, type DeviceInfo } from '@/models/device'
 import request, { httpService } from './request'
 
-/** 获取设备列表 */
-export const getDeviceListApi = (params?: { groupId: number, sortBy?: string, order?: 'asc' | 'desc' }) => {
-    return request<{ items: DeviceInfo[]}>({
+/** 获取设备列表（服务端分页：page/pageSize；q 为搜索词；unassigned 仅未分配） */
+export const getDeviceListApi = (params?: {
+    groupId?: number
+    sortBy?: string
+    order?: 'asc' | 'desc'
+    page?: number
+    pageSize?: number
+    q?: string
+    unassigned?: boolean
+}) => {
+    return request<{ items: DeviceInfo[], page: number, pageSize: number, total: number }>({
         url: '/api/devices',
         params,
     })
