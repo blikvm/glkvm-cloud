@@ -20,7 +20,7 @@
     <div class="device-list-container" v-else>
         <div class="out-device-list-header">
             <div class="left">
-                <BaseText type="large-title-m">{{ $t('device.devices') + '(' + deviceStore.deviceList.length + ')' }}</BaseText>
+                <BaseText type="large-title-m">{{ $t('device.devices') + '(' + deviceStore.pageLink.total + ')' }}</BaseText>
             </div>
         </div>
         <div class="device-list">
