@@ -68,8 +68,10 @@ CREATE TABLE IF NOT EXISTS devices (
   FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_devices_group_id ON devices(device_group_id);
-CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
-CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen_at);
+-- No index on status/last_seen_at: both change on every connect/disconnect (high
+-- write churn during reconnect storms) but neither is used by any read query —
+-- the device-list sort uses expressions ((status='online'), COALESCE(last_seen_at,0))
+-- that can't use a plain column index, and nothing filters by these columns.
 
 CREATE TRIGGER IF NOT EXISTS trg_users_updated_at
 AFTER UPDATE ON users
