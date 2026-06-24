@@ -537,3 +537,344 @@ func fieldOrderedWithinBucket(items []devItem, field string, asc bool) bool {
 	}
 	return true
 }
+
+// ============================================================================
+// F / H / I  — groups & RBAC, event logs, CRUD. Modular, self-contained tests.
+// ============================================================================
+
+type evtItem struct {
+	DeviceMac string `json:"deviceMac"`
+	EventType string `json:"eventType"`
+	CreatedAt int64  `json:"createdAt"`
+}
+
+// ---- generic request helpers ----
+
+func (c *client) post(t *testing.T, path string, body any) apiEnvelope {
+	t.Helper()
+	_, env, err := c.do("POST", path, body, true)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	return env
+}
+func (c *client) put(t *testing.T, path string, body any) apiEnvelope {
+	t.Helper()
+	_, env, err := c.do("PUT", path, body, true)
+	if err != nil {
+		t.Fatalf("PUT %s: %v", path, err)
+	}
+	return env
+}
+func (c *client) del(t *testing.T, path string) {
+	t.Helper()
+	c.do("DELETE", path, nil, true)
+}
+
+func loginClient(t *testing.T, cfg config, user, pass string) *client {
+	c := newClient(cfg)
+	c.cfg.user, c.cfg.pass = user, pass
+	_, env, err := c.do("POST", "/api/login", map[string]string{"username": user, "password": pass}, false)
+	if err != nil || !env.OK {
+		return nil
+	}
+	var d struct {
+		Token string `json:"token"`
+	}
+	json.Unmarshal(env.Data, &d)
+	if d.Token == "" {
+		return nil
+	}
+	c.token = d.Token
+	return c
+}
+
+// ---- fixture helpers ----
+
+func (c *client) createDeviceGroup(t *testing.T, name string) int64 {
+	t.Helper()
+	env := c.post(t, "/api/device-groups", map[string]any{"name": name})
+	if !env.OK {
+		t.Fatalf("create device-group %q: %s", name, env.Code)
+	}
+	var d struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(env.Data, &d)
+	if d.ID == 0 {
+		t.Fatalf("create device-group returned no id")
+	}
+	return d.ID
+}
+func (c *client) createUserGroup(t *testing.T, name string) int64 {
+	t.Helper()
+	env := c.post(t, "/api/user-groups", map[string]any{"name": name})
+	if !env.OK {
+		t.Fatalf("create user-group %q: %s", name, env.Code)
+	}
+	var d struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(env.Data, &d)
+	return d.ID
+}
+func (c *client) linkUGtoDG(t *testing.T, ugID int64, dgIDs []int64) {
+	t.Helper()
+	env := c.put(t, fmt.Sprintf("/api/user-groups/%d/device-groups", ugID), map[string]any{"deviceGroupIds": dgIDs})
+	if !env.OK {
+		t.Fatalf("link ug %d -> dg: %s", ugID, env.Code)
+	}
+}
+func (c *client) createNormalUser(t *testing.T, username, pass string, ugIDs []int64) {
+	t.Helper()
+	env := c.post(t, "/api/users", map[string]any{
+		"role": "user", "username": username, "password": pass, "repassword": pass, "userGroupIds": ugIDs,
+	})
+	if !env.OK {
+		t.Fatalf("create user %q: %s", username, env.Code)
+	}
+}
+func (c *client) findUserID(t *testing.T, username string) int64 {
+	t.Helper()
+	_, env, _ := c.do("GET", "/api/users", nil, true)
+	var d struct {
+		Items []struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		} `json:"items"`
+	}
+	json.Unmarshal(env.Data, &d)
+	for _, u := range d.Items {
+		if u.Username == username {
+			return u.ID
+		}
+	}
+	return 0
+}
+func (c *client) assignDevicesToGroup(t *testing.T, dgID int64, devIDs []int64) {
+	t.Helper()
+	env := c.put(t, fmt.Sprintf("/api/device-groups/%d/devices", dgID), map[string]any{"deviceIds": devIDs})
+	if !env.OK {
+		t.Fatalf("assign devices to dg %d: %s", dgID, env.Code)
+	}
+}
+func (c *client) me(t *testing.T) []string {
+	t.Helper()
+	_, env, _ := c.do("GET", "/api/me", nil, true)
+	var d struct {
+		Permissions []string `json:"permissions"`
+	}
+	json.Unmarshal(env.Data, &d)
+	return d.Permissions
+}
+func (c *client) listEventLogs(t *testing.T, mac, types string) []evtItem {
+	t.Helper()
+	_, env, _ := c.do("GET", fmt.Sprintf("/api/device-event-logs?mac=%s&types=%s&pageSize=50", mac, types), nil, true)
+	var d struct {
+		Items []evtItem `json:"items"`
+	}
+	json.Unmarshal(env.Data, &d)
+	return d.Items
+}
+
+// registerQAOnline registers a qa device and returns the live conn + its DB id.
+func (c *client) registerQAOnline(t *testing.T, devid, mac string) (net.Conn, int64) {
+	t.Helper()
+	conn, code, err := registerDevice(c.cfg.devAddr, devid, mac, c.cfg.devToken)
+	if err != nil {
+		t.Fatalf("register %s: %v", devid, err)
+	}
+	if code != 0 {
+		conn.Close()
+		t.Fatalf("register %s rejected, code=%d", devid, code)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	got := c.listDevices(t, "q="+devid)
+	for _, it := range got.Items {
+		if it.Ddns == devid {
+			return conn, it.ID
+		}
+	}
+	conn.Close()
+	t.Fatalf("registered device %s not found in list", devid)
+	return nil, 0
+}
+
+func findItem(items []devItem, ddns string) *devItem {
+	for i := range items {
+		if items[i].Ddns == ddns {
+			return &items[i]
+		}
+	}
+	return nil
+}
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+func anyEvent(items []evtItem, mac, typ string) bool {
+	for _, e := range items {
+		if e.DeviceMac == mac && e.EventType == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// ===== F. Group filter + RBAC visibility =====
+func TestE2E_GroupsRBAC(t *testing.T) {
+	cfg := loadConfig(t)
+	if cfg.pass == "" {
+		t.Skip("QA_PASS required")
+	}
+	c := newClient(cfg)
+	c.login(t)
+
+	t.Run("F2_unassigned", func(t *testing.T) {
+		un := c.listDevices(t, "unassigned=true&pageSize=50")
+		for _, it := range un.Items {
+			if it.DeviceGroupID != nil {
+				t.Errorf("F2 unassigned=true returned grouped device %s", it.Ddns)
+			}
+		}
+	})
+
+	if cfg.devAddr == "" {
+		t.Skip("QA_DEV_ADDR required for RBAC fixture")
+	}
+	t.Run("F3_visibility_and_perm_enforcement", func(t *testing.T) {
+		c.cleanupQADevices(t)
+		defer c.cleanupQADevices(t)
+		dgID := c.createDeviceGroup(t, "qae2e_dg")
+		ugID := c.createUserGroup(t, "qae2e_ug")
+		c.linkUGtoDG(t, ugID, []int64{dgID})
+		uname, upass := "qae2e_user", "Qae2ePass123!"
+		c.createNormalUser(t, uname, upass, []int64{ugID})
+		defer func() {
+			if uid := c.findUserID(t, uname); uid > 0 {
+				c.del(t, fmt.Sprintf("/api/users/%d", uid))
+			}
+			c.del(t, fmt.Sprintf("/api/user-groups/%d", ugID))
+			c.del(t, fmt.Sprintf("/api/device-groups/%d", dgID))
+		}()
+
+		conn, devID := c.registerQAOnline(t, "qae2e_vis", "02ffqaevis01")
+		defer conn.Close()
+		c.assignDevicesToGroup(t, dgID, []int64{devID})
+
+		nu := loginClient(t, cfg, uname, upass)
+		if nu == nil {
+			t.Fatal("normal user login failed")
+		}
+		vl := nu.listDevices(t, "pageSize=100")
+		// F3: the user sees their group device, and ONLY devices in their group.
+		if findItem(vl.Items, "qae2e_vis") == nil {
+			t.Errorf("F3 normal user cannot see their own group's device")
+		}
+		for _, it := range vl.Items {
+			if it.DeviceGroupID == nil || *it.DeviceGroupID != dgID {
+				t.Errorf("F3 normal user saw out-of-scope device %s (group=%v)", it.Ddns, it.DeviceGroupID)
+			}
+		}
+		// Permission enforcement must be consistent with declared permissions.
+		perms := nu.me(t)
+		hasWrite := contains(perms, "device.write")
+		_, env, _ := nu.do("DELETE", fmt.Sprintf("/api/devices/%d", devID), nil, true)
+		denied := !env.OK
+		if hasWrite && denied {
+			t.Errorf("RBAC inconsistent: user HAS device.write but delete was denied")
+		}
+		if !hasWrite && !denied {
+			t.Errorf("RBAC inconsistent: user LACKS device.write but delete succeeded")
+		}
+		t.Logf("normal user perms=%v device.write=%v deleteDenied=%v", perms, hasWrite, denied)
+	})
+}
+
+// ===== H. Event logs =====
+func TestE2E_EventLogs(t *testing.T) {
+	cfg := loadConfig(t)
+	if cfg.pass == "" || cfg.devAddr == "" {
+		t.Skip("QA_PASS + QA_DEV_ADDR required")
+	}
+	c := newClient(cfg)
+	c.login(t)
+	c.cleanupQADevices(t)
+	defer c.cleanupQADevices(t)
+
+	devid, mac := "qae2e_evt", "02ffqaeevt01"
+	conn, _ := c.registerQAOnline(t, devid, mac)
+
+	t.Run("H1_online_event", func(t *testing.T) {
+		// poll a few seconds for the online event
+		for i := 0; i < 6; i++ {
+			if anyEvent(c.listEventLogs(t, mac, "device_online"), mac, "device_online") {
+				return
+			}
+			time.Sleep(time.Second)
+		}
+		t.Errorf("H1 no device_online event recorded for %s (mac %s)", devid, mac)
+	})
+
+	t.Run("H2_offline_event", func(t *testing.T) {
+		conn.Close() // clean disconnect -> server should mark offline + log
+		for i := 0; i < 12; i++ {
+			if anyEvent(c.listEventLogs(t, mac, "device_offline"), mac, "device_offline") {
+				return
+			}
+			time.Sleep(time.Second)
+		}
+		t.Errorf("H2 no device_offline event within 12s after disconnect")
+	})
+}
+
+// ===== I. Device CRUD (admin) =====
+func TestE2E_CRUD(t *testing.T) {
+	cfg := loadConfig(t)
+	if cfg.pass == "" || cfg.devAddr == "" {
+		t.Skip("QA_PASS + QA_DEV_ADDR required")
+	}
+	c := newClient(cfg)
+	c.login(t)
+	c.cleanupQADevices(t)
+	defer c.cleanupQADevices(t)
+
+	dgID := c.createDeviceGroup(t, "qae2e_crud_dg")
+	defer c.del(t, fmt.Sprintf("/api/device-groups/%d", dgID))
+
+	conn, devID := c.registerQAOnline(t, "qae2e_crud", "02ffqaecrud1")
+
+	t.Run("I1_update_description", func(t *testing.T) {
+		env := c.put(t, fmt.Sprintf("/api/devices/%d", devID), map[string]string{"description": "qa-updated-desc"})
+		if !env.OK {
+			t.Fatalf("I1 update failed: %s", env.Code)
+		}
+		d := findItem(c.listDevices(t, "q=qae2e_crud").Items, "qae2e_crud")
+		if d == nil || d.Description != "qa-updated-desc" {
+			t.Errorf("I1 description not updated, got %+v", d)
+		}
+	})
+
+	t.Run("I3_move_to_group", func(t *testing.T) {
+		env := c.post(t, "/api/devices/move-to-device-group", map[string]any{"groupId": dgID, "deviceIds": []int64{devID}})
+		if !env.OK {
+			t.Fatalf("I3 move failed: %s", env.Code)
+		}
+		d := findItem(c.listDevices(t, "q=qae2e_crud").Items, "qae2e_crud")
+		if d == nil || d.DeviceGroupID == nil || *d.DeviceGroupID != dgID {
+			t.Errorf("I3 device not in group %d, got %+v", dgID, d)
+		}
+	})
+
+	t.Run("I2_delete", func(t *testing.T) {
+		conn.Close()
+		c.del(t, fmt.Sprintf("/api/devices/%d", devID))
+		if findItem(c.listDevices(t, "q=qae2e_crud").Items, "qae2e_crud") != nil {
+			t.Errorf("I2 device still present after delete")
+		}
+	})
+}
