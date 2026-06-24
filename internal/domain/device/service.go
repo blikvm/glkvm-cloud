@@ -34,3 +34,9 @@ func (s *Service) ListVisible(ctx context.Context, role identity.Role, userID in
 func (s *Service) ListByDeviceGroupIDs(ctx context.Context, groupIDs []int64) ([]Device, error) {
     return s.repo.ListByDeviceGroupIDs(ctx, groupIDs)
 }
+
+// ListPaged returns one filtered/sorted page plus the total matching count,
+// pushing all the work to SQL (see Repository.ListPaged).
+func (s *Service) ListPaged(ctx context.Context, q ListQuery) ([]ListItem, int64, error) {
+    return s.repo.ListPaged(ctx, q)
+}

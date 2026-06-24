@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"io"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -53,17 +52,19 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 	}
 
 	isAdmin := p.Role == identity.RoleAdmin
-	var items []device.Device
+
+	emptyResp := func() {
+		dto.Write(c, dto.Ok(traceID, dto.ListDevicesResp{
+			Items: []dto.Device{}, Page: 1, PageSize: 0, Total: 0,
+		}))
+	}
+
+	// Resolve visibility into a group-id restriction. nil = no restriction
+	// (admin sees all devices, including ungrouped).
+	var restrictGroups []int64
 	if isAdmin {
-		var err error
 		if filterGroupID != nil {
-			items, err = h.devSvc.ListByDeviceGroupIDs(c.Request.Context(), []int64{*filterGroupID})
-		} else {
-			items, err = h.devSvc.ListVisible(c.Request.Context(), p.Role, p.UserID)
-		}
-		if err != nil {
-			dto.Write(c, dto.Err(traceID, dto.CodeInternalError, "Internal error", nil))
-			return
+			restrictGroups = []int64{*filterGroupID}
 		}
 	} else {
 		if h.groupRepo == nil {
@@ -72,12 +73,7 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 		}
 		dgIDs, err := h.groupRepo.ListDeviceGroupIDsByUser(c.Request.Context(), p.UserID)
 		if err != nil || len(dgIDs) == 0 {
-			dto.Write(c, dto.Ok(traceID, dto.ListDevicesResp{
-				Items:    []dto.Device{},
-				Page:     1,
-				PageSize: 0,
-				Total:    0,
-			}))
+			emptyResp()
 			return
 		}
 		if filterGroupID != nil {
@@ -89,119 +85,47 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 				}
 			}
 			if !allowed {
-				dto.Write(c, dto.Ok(traceID, dto.ListDevicesResp{
-					Items:    []dto.Device{},
-					Page:     1,
-					PageSize: 0,
-					Total:    0,
-				}))
+				emptyResp()
 				return
 			}
 			dgIDs = []int64{*filterGroupID}
 		}
-		items, err = h.devSvc.ListByDeviceGroupIDs(c.Request.Context(), dgIDs)
-		if err != nil {
-			dto.Write(c, dto.Err(traceID, dto.CodeInternalError, "Internal error", nil))
-			return
-		}
+		restrictGroups = dgIDs
 	}
 
-	groupNameByID := map[int64]string{}
-	if h.groupRepo != nil {
-		groups, err := h.groupRepo.ListDeviceGroupsVisibleToUser(c.Request.Context(), p.UserID, isAdmin)
-		if err != nil {
-			dto.Write(c, dto.Err(traceID, dto.CodeInternalError, "Internal error", nil))
-			return
-		}
-		for _, g := range groups {
-			groupNameByID[g.ID] = g.Name
-		}
+	// Pagination params: pageSize omitted => return all (backward compatible).
+	page := 1
+	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && v > 0 {
+		page = v
+	}
+	pageSize := 0
+	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("pageSize"))); err == nil && v > 0 {
+		pageSize = v
 	}
 
-	// Parse sort parameters: sortBy and order
-	sortBy := strings.TrimSpace(c.Query("sortBy"))     // id, ip, mac, connectedTime, description, ddns
-	sortOrder := strings.TrimSpace(c.Query("order"))   // asc, desc (default: asc)
-
-	ascending := true
-	if strings.EqualFold(sortOrder, "desc") {
-		ascending = false
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		// Online devices always come first regardless of sort field/order
-		oi := items[i].Status == device.StatusOnline
-		oj := items[j].Status == device.StatusOnline
-		if oi != oj {
-			return oi
-		}
-
-		// Secondary sort by the requested field
-		// cmp: -1 means i<j, 0 means equal, 1 means i>j
-		var cmp int
-		switch sortBy {
-		case "id":
-			switch {
-			case items[i].ID < items[j].ID:
-				cmp = -1
-			case items[i].ID > items[j].ID:
-				cmp = 1
-			}
-		case "ip":
-			cmp = strings.Compare(items[i].IP, items[j].IP)
-		case "mac":
-			cmp = strings.Compare(items[i].Mac, items[j].Mac)
-		case "connectedTime":
-			var ti, tj int64
-			if items[i].LastSeenAt != nil {
-				ti = *items[i].LastSeenAt
-			}
-			if items[j].LastSeenAt != nil {
-				tj = *items[j].LastSeenAt
-			}
-			switch {
-			case ti < tj:
-				cmp = -1
-			case ti > tj:
-				cmp = 1
-			}
-		case "description":
-			cmp = strings.Compare(items[i].Description, items[j].Description)
-		case "ddns":
-			cmp = strings.Compare(items[i].Ddns, items[j].Ddns)
-		case "deviceGroupName":
-			var gi, gj string
-			if items[i].DeviceGroupID != nil {
-				gi = groupNameByID[*items[i].DeviceGroupID]
-			}
-			if items[j].DeviceGroupID != nil {
-				gj = groupNameByID[*items[j].DeviceGroupID]
-			}
-			cmp = strings.Compare(gi, gj)
-		default:
-			cmp = strings.Compare(items[i].Ddns, items[j].Ddns)
-		}
-
-		if cmp == 0 {
-			return false // equal, preserve original order
-		}
-		if ascending {
-			return cmp < 0
-		}
-		return cmp > 0
+	// All filtering/sorting/pagination is pushed to SQL. The search ':' is
+	// stripped to match the colon-less MAC stored in the DB, mirroring the
+	// previous client-side search behavior.
+	items, total, err := h.devSvc.ListPaged(c.Request.Context(), device.ListQuery{
+		RestrictGroups: restrictGroups,
+		Search:         strings.ToLower(strings.ReplaceAll(strings.TrimSpace(c.Query("q")), ":", "")),
+		Unassigned:     strings.EqualFold(strings.TrimSpace(c.Query("unassigned")), "true"),
+		SortBy:         strings.TrimSpace(c.Query("sortBy")),
+		Order:          strings.TrimSpace(c.Query("order")),
+		Page:           page,
+		PageSize:       pageSize,
 	})
+	if err != nil {
+		dto.Write(c, dto.Err(traceID, dto.CodeInternalError, "Internal error", nil))
+		return
+	}
 
 	out := make([]dto.Device, 0, len(items))
 	for _, d := range items {
-		var groupName string
-		if d.DeviceGroupID != nil {
-			groupName = groupNameByID[*d.DeviceGroupID]
-		}
-
 		var connectedTime int64
 		if d.LastSeenAt != nil {
 			connectedTime = *d.LastSeenAt
 		}
-
 		out = append(out, dto.Device{
 			ID:              d.ID,
 			Ddns:            d.Ddns,
@@ -212,15 +136,19 @@ func (h *DeviceHandler) ListDevices(c *gin.Context) {
 			Description:     d.Description,
 			Client:          d.Client,
 			DeviceGroupID:   d.DeviceGroupID,
-			DeviceGroupName: groupName,
+			DeviceGroupName: d.GroupName,
 		})
 	}
 
+	respPageSize := int(total)
+	if pageSize > 0 {
+		respPageSize = pageSize
+	}
 	dto.Write(c, dto.Ok(traceID, dto.ListDevicesResp{
 		Items:    out,
-		Page:     1,
-		PageSize: len(out),
-		Total:    len(out),
+		Page:     page,
+		PageSize: respPageSize,
+		Total:    int(total),
 	}))
 }
 
