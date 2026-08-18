@@ -80,6 +80,7 @@ services:
     image: ${COTURN_IMAGE:-coturn/coturn:edge-alpine}
     container_name: glkvm_coturn
     restart: always
+    user: "0:0"  # run as root so it can read the bind-mounted entrypoint
     environment:
       # Same semantics as above: prefer explicit value, else auto-detect
       GLKVM_ACCESS_IP: ${GLKVM_ACCESS_IP:-}
