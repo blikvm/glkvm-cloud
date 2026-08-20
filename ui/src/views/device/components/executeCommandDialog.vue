@@ -16,6 +16,12 @@
         :beforeOk="handleApply"
         @close="emits('update:open', false)"
     >
+        <AAlert
+            class="usage-tip"
+            type="warning"
+            show-icon
+            :message="$t('device.commandUsageWarning')"
+        />
         <AForm
             class="dense-form"
             :colon="false"
@@ -53,7 +59,7 @@
                         name="wait"
                         :addonAfter="$t('common.s')"
                         :placeholder="$t('device.inputWaitTime')"
-                        :min="0"
+                        :min="1"
                         :max="30"
                         style="width: 200px;" />
                 </div>
@@ -83,7 +89,7 @@ const formRef = ref<FormInstance>()
 
 const state = reactive<{formData: ExecuteCommandFormData}>({
     formData: {
-        username: '',
+        username: 'root',
         cmd: '',
         params: [],
         wait: 30,
@@ -114,7 +120,7 @@ watch(() => props.open, (newVal) => {
 })
 
 const init = () => {
-    state.formData.username = ''
+    state.formData.username = 'root'
     state.formData.cmd = ''
     state.formData.params = []
     state.formData.wait = 30
@@ -125,6 +131,9 @@ const init = () => {
 .modal {
     .base-modal-content {
         overflow: hidden !important;
+    }
+    .usage-tip {
+        margin-bottom: 16px;
     }
 }
 </style>

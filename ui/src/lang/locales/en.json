@@ -117,6 +117,8 @@
     "commandResponseDetail": "Command Response Detail",
     "standardOutput": "Standard output",
     "standardErrorOutput": "Standard error output",
+    "commandResponseError": "Invalid response returned by the device",
+    "commandUsageWarning": "Only for simple, quick-returning commands. Long-running, real-time/streaming, or interactive commands will time out within the wait time (up to 30s) and return no result; use the remote terminal for those.",
     "status": "Status",
     "online": "Online",
     "offline": "Offline",

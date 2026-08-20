@@ -761,10 +761,12 @@ func handleCmdMsg(dev *Device, data []byte) error {
 
 	attrs["devid"] = dev.id
 
-	if val, ok := dev.commands.Load(info.Token); ok {
+	if val, ok := dev.commands.LoadAndDelete(info.Token); ok {
 		req := val.(*CommandReq)
-		req.acked = true
-		req.c.JSON(http.StatusOK, attrs)
+		req.respondOnce.Do(func() {
+			req.acked = true
+			req.c.JSON(http.StatusOK, attrs)
+		})
 		req.cancel()
 	}
 

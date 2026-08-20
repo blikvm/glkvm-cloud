@@ -33,7 +33,7 @@ export interface DeviceQuery {
 
 /** 执行命令参数 */
 export interface ExecuteCommandParams {
-    id: number
+    id: string
     group: string
     wait: number
     cmd: string

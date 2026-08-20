@@ -20,8 +20,22 @@
             <BaseText>{{ props.res.id }}</BaseText>
         </div>
 
-        <BaseText style="margin: 20px 0 6px;">{{ props.type === 'success' ? $t('device.standardOutput') : $t('device.standardErrorOutput') }}</BaseText>
-        <ATextarea :value="props.type === 'success' ? props.res.stdout : props.res.stderr" readonly :autoSize="{minRows:1, maxRows: 20}"></ATextarea>
+        <!-- 成功页:命令已执行,展示标准输出(以及有内容时的标准错误输出) -->
+        <template v-if="props.type === 'success'">
+            <BaseText style="margin: 20px 0 6px;">{{ $t('device.standardOutput') }}</BaseText>
+            <ATextarea :value="props.res.stdout" readonly :autoSize="{minRows:1, maxRows: 20}"></ATextarea>
+
+            <template v-if="props.res.stderr">
+                <BaseText style="margin: 20px 0 6px;">{{ $t('device.standardErrorOutput') }}</BaseText>
+                <ATextarea :value="props.res.stderr" readonly :autoSize="{minRows:1, maxRows: 20}"></ATextarea>
+            </template>
+        </template>
+
+        <!-- 失败页:平台层未执行成功(离线/超时/格式错),只展示错误信息 -->
+        <template v-else>
+            <BaseText style="margin: 20px 0 6px;">{{ $t('device.errorMessage') }}</BaseText>
+            <ATextarea :value="props.res.msg" readonly :autoSize="{minRows:1, maxRows: 20}"></ATextarea>
+        </template>
     </BaseModal>
 </template>
 

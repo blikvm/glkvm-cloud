@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"rttys/utils"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,11 @@ type CommandReq struct {
 	cancel context.CancelFunc
 	acked  bool
 	c      *gin.Context
+	// respondOnce guarantees the HTTP response body is written exactly once.
+	// Both the device-response path (handleCmdMsg) and the timeout/offline paths
+	// here race to respond; without this a timeout used to write the error twice
+	// (timeout + offline), producing a malformed, concatenated JSON body.
+	respondOnce sync.Once
 }
 
 type CommandReqInfo struct {
@@ -122,15 +128,19 @@ func (dev *Device) handleCmdReq(c *gin.Context, info *CommandReqInfo) {
 
 	select {
 	case <-tmr.C:
-		cmdErrResp(c, rttyCmdErrTimeout)
+		req.respondOnce.Do(func() {
+			cmdErrResp(c, rttyCmdErrTimeout)
+		})
 	case <-ctx.Done():
 	}
 
 	dev.commands.Delete(token)
 
-	if !req.acked {
+	// Only writes when neither the device response nor the timeout has responded
+	// yet (i.e. the device/connection went away before acking).
+	req.respondOnce.Do(func() {
 		cmdErrResp(c, rttyCmdErrOffline)
-	}
+	})
 
 	log.Debug().Msgf("handle cmd request for device '%s', token '%s' done", dev.id, token)
 }

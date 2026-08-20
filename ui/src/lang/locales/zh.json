@@ -117,6 +117,8 @@
     "commandResponseDetail": "命令响应详情",
     "standardOutput": "标准输出",
     "standardErrorOutput": "标准错误输出",
+    "commandResponseError": "设备返回数据异常",
+    "commandUsageWarning": "仅适用于快速返回的简单命令。长时间运行、实时/流式输出或交互式命令会在等待时间(最长 30 秒)内超时且无法获取结果;此类操作请使用远程终端。",
     "status": "状态",
     "online": "在线",
     "offline": "离线",

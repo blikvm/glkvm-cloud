@@ -117,6 +117,8 @@
     "commandResponseDetail": "명령 응답 상세",
     "standardOutput": "표준 출력",
     "standardErrorOutput": "표준 오류 출력",
+    "commandResponseError": "기기에서 잘못된 응답이 반환되었습니다",
+    "commandUsageWarning": "빠르게 응답하는 간단한 명령에만 사용하세요. 장시간 실행, 실시간/스트리밍 또는 대화형 명령은 대기 시간(최대 30초) 내에 시간 초과되어 결과를 가져올 수 없습니다. 이러한 작업에는 원격 터미널을 사용하세요.",
     "status": "상태",
     "online": "온라인",
     "offline": "오프라인",

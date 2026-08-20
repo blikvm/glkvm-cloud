@@ -117,6 +117,8 @@
     "commandResponseDetail": "Details zur Befehlsantwort",
     "standardOutput": "Standardausgabe",
     "standardErrorOutput": "Standardfehlerausgabe",
+    "commandResponseError": "Ungültige Antwort vom Gerät erhalten",
+    "commandUsageWarning": "Nur für einfache, schnell antwortende Befehle. Lang laufende, Echtzeit-/Streaming- oder interaktive Befehle führen innerhalb der Wartezeit (max. 30 Sek.) zu einer Zeitüberschreitung ohne Ergebnis; nutzen Sie dafür das Remote-Terminal.",
     "status": "Status",
     "online": "Online",
     "offline": "Offline",

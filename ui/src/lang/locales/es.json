@@ -117,6 +117,8 @@
     "commandResponseDetail": "Detalle de respuesta del comando",
     "standardOutput": "Salida estándar",
     "standardErrorOutput": "Salida de error estándar",
+    "commandResponseError": "Respuesta no válida devuelta por el dispositivo",
+    "commandUsageWarning": "Solo para comandos simples de respuesta rápida. Los comandos de larga duración, en tiempo real/streaming o interactivos agotarán el tiempo de espera (máx. 30 s) sin devolver resultado; use el terminal remoto para ellos.",
     "status": "Estado",
     "online": "En línea",
     "offline": "Fuera de línea",

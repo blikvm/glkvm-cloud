@@ -7,7 +7,8 @@
  * @Description: 设备相关API
  */
 import { ExecuteCommandParams, type DeviceInfo } from '@/models/device'
-import request, { httpService } from './request'
+import request from './request'
+import axios from 'axios'
 
 /** 获取设备列表（服务端分页：page/pageSize；q 为搜索词；unassigned 仅未分配） */
 export const getDeviceListApi = (params?: {
@@ -34,8 +35,15 @@ export const getAddDeviceScriptInfoApi = () => {
 }
 
 /** 执行命令 */
+// The /cmd endpoint is served directly by rttys and does NOT use the cloud
+// `{code:"OK",...}` envelope: success is {code:0,stdout,stderr,devid}, an rtty error is
+// {err:1xxx,msg}, and wait=0 returns an empty body. Routing it through httpService's
+// interceptor would (a) reject even a successful command (code 0 !== "OK") and (b) pop a
+// "Server Error Message" toast via showErrorMessage. Use a bare axios call to bypass the
+// interceptor entirely; it is same-origin, so the `sid` auth cookie is still sent, and the
+// caller reads the native body from res.data.
 export const reqExecuteCommand = (data: ExecuteCommandParams) => {
-    return httpService.post(`/cmd/${data.id}?group=${data.group}&wait=${data.wait}`, data)
+    return axios.post(`/cmd/${data.id}?group=${data.group}&wait=${data.wait}`, data)
 }
 
 /** 修改描述 */

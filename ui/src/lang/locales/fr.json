@@ -117,6 +117,8 @@
     "commandResponseDetail": "Détail de la réponse de la commande",
     "standardOutput": "Sortie standard",
     "standardErrorOutput": "Sortie d'erreur standard",
+    "commandResponseError": "Réponse non valide renvoyée par l'appareil",
+    "commandUsageWarning": "Uniquement pour des commandes simples à réponse rapide. Les commandes longues, en temps réel/streaming ou interactives expireront dans le délai d'attente (max. 30 s) sans renvoyer de résultat ; utilisez le terminal distant pour cela.",
     "status": "Statut",
     "online": "En ligne",
     "offline": "Hors ligne",

@@ -153,7 +153,7 @@ const init = () => {
     state.total = selections.length
     selections.map(device => {
         const data = {
-            id: device.id,
+            id: device.ddns,
             group: '',
             wait: props.formData.wait,
             cmd: props.formData.cmd,
@@ -166,13 +166,30 @@ const init = () => {
                 state.responses.push({
                     err: 0,
                     msg: '',
-                    id: device.id,
+                    id: device.ddns,
                     code: 0,
                     stdout: '',
                     stderr: '',
                 })
             } else {
                 const resp = res.data
+
+                // Defensive: a well-formed /cmd response is always a JSON object. If the
+                // body was malformed (e.g. a corrupted/concatenated payload that axios could
+                // not parse), res.data is a raw string — treat it as a failure instead of
+                // throwing "Cannot create property 'stdout' on string".
+                if (!resp || typeof resp !== 'object') {
+                    state.fail++
+                    state.responses.push({
+                        err: -1,
+                        msg: t('device.commandResponseError'),
+                        id: device.ddns,
+                        code: 0,
+                        stdout: '',
+                        stderr: '',
+                    })
+                    return
+                }
 
                 if (resp.err && resp.err !== 0) {
                     state.fail++
@@ -183,7 +200,7 @@ const init = () => {
                     resp.stderr = window.atob(resp.stderr || '')
                 }
 
-                resp.id = device.id
+                resp.id = device.ddns
                 state.responses.push(resp)
             }
         }).catch(error => {
@@ -193,7 +210,7 @@ const init = () => {
             state.responses.push({
                 err: response?.err || response?.code || -1,
                 msg: response?.msg || response?.message || '',
-                id: device.id,
+                id: device.ddns,
                 code: response?.code || 0,
                 stdout: '',
                 stderr: '',

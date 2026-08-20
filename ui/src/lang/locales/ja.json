@@ -117,6 +117,8 @@
     "commandResponseDetail": "コマンド応答の詳細",
     "standardOutput": "標準出力",
     "standardErrorOutput": "標準エラー出力",
+    "commandResponseError": "デバイスから無効な応答が返されました",
+    "commandUsageWarning": "すぐに応答する簡単なコマンド専用です。長時間実行、リアルタイム/ストリーミング、または対話型のコマンドは待機時間(最大30秒)内にタイムアウトし、結果を取得できません。その場合はリモートターミナルをご利用ください。",
     "status": "ステータス",
     "online": "オンライン",
     "offline": "オフライン",

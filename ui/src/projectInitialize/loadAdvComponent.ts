@@ -28,6 +28,7 @@ import {
     Popover,
     Popconfirm,
     DatePicker,
+    Alert,
 } from 'ant-design-vue'
 
 export default function (app: any) {
@@ -52,4 +53,5 @@ export default function (app: any) {
     app.use(Popover)
     app.use(Popconfirm)
     app.use(DatePicker)
+    app.use(Alert)
 }
