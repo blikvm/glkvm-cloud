@@ -2,8 +2,8 @@
  * @Author: LPY
  * @Date: 2025-08-26 11:15:08
  * @LastEditors: LPY
- * @LastEditTime: 2025-08-26 16:51:00
- * @FilePath: \glkvm-cloud\web-ui\src\views\device\components\commandResponseDialog.vue
+ * @LastEditTime: 2026-08-20 11:32:44
+ * @FilePath: \glkvm-cloud-open-code\ui\src\views\device\components\commandResponseDialog.vue
  * @Description: 
 -->
 <template>
@@ -149,7 +149,7 @@ const handleOpenDetail = (record: any) => {
 
 const init = () => {
     // 调用接口进行下发配置
-    const selections = props.selection.filter(item => item.proto > 4)
+    const selections = props.selection
     state.total = selections.length
     selections.map(device => {
         const data = {
@@ -172,7 +172,7 @@ const init = () => {
                     stderr: '',
                 })
             } else {
-                const resp = res.info
+                const resp = res.data
 
                 if (resp.err && resp.err !== 0) {
                     state.fail++
@@ -186,6 +186,18 @@ const init = () => {
                 resp.id = device.id
                 state.responses.push(resp)
             }
+        }).catch(error => {
+            const response = error?.response?.data || error
+
+            state.fail++
+            state.responses.push({
+                err: response?.err || response?.code || -1,
+                msg: response?.msg || response?.message || '',
+                id: device.id,
+                code: response?.code || 0,
+                stdout: '',
+                stderr: '',
+            })
         })
     })
 }
